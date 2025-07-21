@@ -1,0 +1,249 @@
+<!-- templates/kasir.html -->
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-4">Kasir Toko Plastik</h1>
+    
+    <div class="row">
+        <!-- Daftar Produk -->
+        <div class="col-md-7">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <i class="bi bi-box-seam"></i> Daftar Produk
+                </div>
+                <div class="card-body">
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" placeholder="Cari produk..." id="search-product">
+                        <button class="btn btn-outline-secondary" type="button">
+                            <i class="bi bi-search"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="row row-cols-1 row-cols-md-2 g-4" id="product-list">
+                        {% for p in produk %}
+                        <div class="col">
+                            <div class="card h-100 product-card" 
+                                 data-id="{{ p['id'] }}"
+                                 data-nama="{{ p['nama'] }}"
+                                 data-harga="{{ p['harga'] }}"
+                                 data-stok="{{ p['stok'] }}"
+                                 data-satuan="{{ p['satuan'] }}">
+                                <div class="card-body">
+                                    <h5 class="card-title">{{ p['nama'] }}</h5>
+                                    <p class="card-text">
+                                        <span class="badge bg-secondary">{{ p['kode'] }}</span>
+                                        <br>
+                                        <strong>Rp {{ "{:,.0f}".format(p['harga']) }}</strong> / {{ p['satuan'] }}
+                                        <br>
+                                        Stok: {{ p['stok'] }} {{ p['satuan'] }}
+                                    </p>
+                                </div>
+                                <div class="card-footer text-end">
+                                    <button class="btn btn-sm btn-primary add-to-cart">
+                                        <i class="bi bi-cart-plus"></i> Tambah
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Keranjang Belanja -->
+        <div class="col-md-5">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <i class="bi bi-cart"></i> Keranjang Belanja
+                </div>
+                <div class="card-body">
+                    <div id="keranjang-container">
+                        <table class="table" id="cart-table">
+                            <thead>
+                                <tr>
+                                    <th>Produk</th>
+                                    <th>Qty</th>
+                                    <th>Subtotal</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="cart-items">
+                                <!-- Items akan ditambahkan via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mt-3">
+                        <h5>Total:</h5>
+                        <h5 id="total-amount">Rp 0</h5>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="mb-3">
+                        <label for="amount-paid" class="form-label">Dibayar</label>
+                        <input type="number" class="form-control" id="amount-paid" min="0">
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mb-3">
+                        <h5>Kembalian:</h5>
+                        <h5 id="change-amount">Rp 0</h5>
+                    </div>
+                    
+                    <button class="btn btn-success w-100 py-3" id="process-transaction">
+                        <i class="bi bi-check-circle"></i> Proses Transaksi
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    let cart = [];
+    const cartItems = $('#cart-items');
+    const totalAmount = $('#total-amount');
+    const changeAmount = $('#change-amount');
+    
+    // Tambah produk ke keranjang
+    $('.add-to-cart').click(function() {
+        const productCard = $(this).closest('.product-card');
+        const productId = productCard.data('id');
+        const productName = productCard.data('nama');
+        const productPrice = productCard.data('harga');
+        const productStock = productCard.data('stok');
+        
+        // Cek apakah produk sudah ada di keranjang
+        const existingItem = cart.find(item => item.id === productId);
+        
+        if (existingItem) {
+            if (existingItem.jumlah < productStock) {
+                existingItem.jumlah++;
+                existingItem.subtotal = existingItem.jumlah * existingItem.harga;
+            } else {
+                alert('Stok tidak mencukupi!');
+            }
+        } else {
+            cart.push({
+                id: productId,
+                nama: productName,
+                harga: productPrice,
+                jumlah: 1,
+                subtotal: productPrice
+            });
+        }
+        
+        updateCart();
+    });
+    
+    // Update keranjang
+    function updateCart() {
+        cartItems.empty();
+        let total = 0;
+        
+        cart.forEach((item, index) => {
+            total += item.subtotal;
+            
+            const row = `
+            <tr>
+                <td>${item.nama}</td>
+                <td>
+                    <div class="input-group input-group-sm">
+                        <button class="btn btn-outline-secondary decrement" data-index="${index}">-</button>
+                        <input type="number" class="form-control text-center" value="${item.jumlah}" min="1" max="${item.stok}" readonly>
+                        <button class="btn btn-outline-secondary increment" data-index="${index}">+</button>
+                    </div>
+                </td>
+                <td>Rp ${item.subtotal.toLocaleString('id-ID')}</td>
+                <td>
+                    <button class="btn btn-sm btn-danger remove-item" data-index="${index}">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            </tr>
+            `;
+            
+            cartItems.append(row);
+        });
+        
+        totalAmount.text(`Rp ${total.toLocaleString('id-ID')}`);
+        calculateChange();
+    }
+    
+    // Hitung kembalian
+    function calculateChange() {
+        const paid = parseFloat($('#amount-paid').val()) || 0;
+        const total = cart.reduce((sum, item) => sum + item.subtotal, 0);
+        const change = paid - total;
+        
+        changeAmount.text(`Rp ${change >= 0 ? change.toLocaleString('id-ID') : '0'}`);
+    }
+    
+    // Event listener
+    cartItems.on('click', '.increment', function() {
+        const index = $(this).data('index');
+        cart[index].jumlah++;
+        cart[index].subtotal = cart[index].jumlah * cart[index].harga;
+        updateCart();
+    });
+    
+    cartItems.on('click', '.decrement', function() {
+        const index = $(this).data('index');
+        if (cart[index].jumlah > 1) {
+            cart[index].jumlah--;
+            cart[index].subtotal = cart[index].jumlah * cart[index].harga;
+            updateCart();
+        }
+    });
+    
+    cartItems.on('click', '.remove-item', function() {
+        const index = $(this).data('index');
+        cart.splice(index, 1);
+        updateCart();
+    });
+    
+    $('#amount-paid').on('input', calculateChange);
+    
+    // Proses transaksi
+    $('#process-transaction').click(function() {
+        const paid = parseFloat($('#amount-paid').val()) || 0;
+        const total = cart.reduce((sum, item) => sum + item.subtotal, 0);
+        
+        if (cart.length === 0) {
+            alert('Keranjang belanja kosong!');
+            return;
+        }
+        
+        if (paid < total) {
+            alert('Jumlah pembayaran kurang!');
+            return;
+        }
+        
+        // Kirim data ke server
+        $.ajax({
+            url: "{{ url_for('proses_transaksi') }}",
+            method: "POST",
+            contentType: "application/json",
+            data: JSON.stringify({
+                keranjang: cart,
+                total: total,
+                dibayar: paid
+            }),
+            success: function(response) {
+                if (response.success) {
+                    alert(`Transaksi berhasil! ID: ${response.transaksi_id}\nKembalian: Rp ${response.kembalian.toLocaleString('id-ID')}`);
+                    cart = [];
+                    updateCart();
+                    $('#amount-paid').val('');
+                }
+            }
+        });
+    });
+});
+</script>
+{% endblock %}
